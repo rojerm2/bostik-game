@@ -1,0 +1,16 @@
+# Local development-agent working material
+/.ai-local/
+/.codex-local/
+/Codex_Bostik_Game_Prompt.md
+
+# Generated local output
+/node_modules/
+/dist/
+/coverage/
+/playwright-report/
+/test-results/
+/.env
+/.env.local
+/.env.*.local
+# Reproducibly retrieved model and runtime assets
+/public/vision/
