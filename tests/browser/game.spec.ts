@@ -398,6 +398,20 @@ test('synthetic observations drive calibration, combined moves, loss, ambiguity 
   await expect(page.getByRole('button', { name: 'Continue adventure' })).toBeEnabled();
   await page.getByRole('button', { name: 'Continue adventure' }).click();
   await expect.poll(async () => (await state(page)).screen).toBe('play');
+  // A frozen stream produces no observations at all, rather than explicit empty poses.
+  await page.evaluate(() => clearInterval(window.__replayInterval));
+  await expect.poll(async () => (await state(page)).screen).toBe('paused');
+  await expect(page.getByRole('button', { name: 'Continue adventure' })).toBeDisabled();
+  await expect(page.locator('#tracking-status')).toContainText('Stand tall');
+  await page.evaluate((b) => {
+    window.__replayInterval = window.setInterval(
+      () => window.__bostikTest.observe({ timestamp: performance.now(), bodies: [b] }),
+      65,
+    );
+  }, body());
+  await expect(page.getByRole('button', { name: 'Continue adventure' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Continue adventure' }).click();
+  await expect.poll(async () => (await state(page)).screen).toBe('play');
   await page.evaluate((b) => {
     clearInterval(window.__replayInterval);
     window.__replayInterval = window.setInterval(

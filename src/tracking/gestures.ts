@@ -297,7 +297,10 @@ export class TrackingGate {
     return this.tick(now);
   }
   tick(now: number) {
-    if (now - this.lastGood >= this.timeout) this.paused = true;
+    if (now - this.lastGood >= this.timeout) {
+      this.ready = false;
+      this.paused = true;
+    }
     return this.paused;
   }
   confirm() {

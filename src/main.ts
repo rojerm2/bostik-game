@@ -385,6 +385,10 @@ class BostikApp {
     this.simulation.setPaused(true);
     this.hub.clear();
     this.recognizer?.reset();
+    if (this.mode === 'camera') {
+      if (this.gate.ready) this.trackingMessage = 'Stand tall and still in view before continuing.';
+      this.gate.update(false, performance.now());
+    }
     this.screen = 'paused';
     this.pauseReason = reason;
     this.update();
@@ -403,6 +407,14 @@ class BostikApp {
   private tick(dt: number) {
     if (this.disposed) return;
     const now = performance.now();
+    if (this.mode === 'camera' && ['play', 'countdown', 'paused'].includes(this.screen)) {
+      const wasReady = this.gate.ready;
+      this.gate.tick(now);
+      if (wasReady && !this.gate.ready) {
+        this.trackingMessage = 'Stand tall and still in view before continuing.';
+        $('#tracking-status').textContent = this.trackingMessage;
+      }
+    }
     if (this.screen === 'countdown') {
       const remaining = Math.ceil((this.countdownEnd - now) / 1000);
       const label = document.querySelector('#countdown-number');
@@ -441,6 +453,7 @@ class BostikApp {
     if (now - this.lastUI > 100) {
       this.lastUI = now;
       this.updateHUD();
+      if (this.screen === 'paused') this.updateResume();
     }
     if (this.messageUntil && now > this.messageUntil) {
       $('#toast').classList.remove('visible');

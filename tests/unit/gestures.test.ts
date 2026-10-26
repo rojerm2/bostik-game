@@ -190,5 +190,8 @@ describe('invalid input and recovery', () => {
     expect(gate.confirm()).toBe(false);
     expect(gate.update(true, 700)).toBe(true);
     expect(gate.confirm()).toBe(true);
+    expect(gate.tick(1201)).toBe(true);
+    expect(gate.ready).toBe(false);
+    expect(gate.confirm()).toBe(false);
   });
 });
