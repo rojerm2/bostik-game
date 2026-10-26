@@ -4,7 +4,7 @@ import type { Observation } from '../../src/types';
 interface TestAPI {
   beginReplay(): void;
   observe(o: Observation): void;
-  bump(): void;
+  bump(clearProtection?: boolean): void;
   state(): {
     screen: string;
     lane: number;
@@ -33,48 +33,62 @@ declare global {
   }
 }
 const state = (page: Page) => page.evaluate(() => window.__bostikTest.state());
-async function playKeyboard(page: Page) {
+async function playKeyboard(page: Page, controlledClock = false) {
   await page.getByRole('button', { name: 'Play with keyboard' }).click();
   await page.getByRole('button', { name: 'Let’s explore' }).click();
+  if (controlledClock) await page.clock.runFor(3800);
   await expect.poll(async () => (await state(page)).screen).toBe('play');
 }
 test('welcome, keyboard moves, pause, resume, game over/restart and local best', async ({
   page,
 }) => {
+  test.setTimeout(120000);
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  await page.clock.install({ time: new Date('2026-10-26T00:00:00Z') });
   await page.goto('./');
   await expect(
     page.getByRole('heading', { name: 'A little move. A big adventure.' }),
   ).toBeVisible();
+  await page.clock.pauseAt(new Date('2026-10-26T01:00:00Z'));
   await page.screenshot({ path: '.ai-local/welcome-desktop.png', fullPage: true });
-  await playKeyboard(page);
+  await playKeyboard(page, true);
   await page.locator('#world').click();
   await page.keyboard.down('ArrowLeft');
+  await page.clock.runFor(100);
   await expect.poll(async () => (await state(page)).lane).toBe(-1);
   await page.keyboard.up('ArrowLeft');
+  await page.clock.runFor(100);
   await expect.poll(async () => (await state(page)).lane).toBe(0);
   await page.keyboard.down('Space');
+  await page.clock.runFor(150);
   await expect.poll(async () => (await state(page)).height).toBeGreaterThan(0.1);
   await page.keyboard.up('Space');
+  await page.clock.runFor(1000);
   await expect.poll(async () => (await state(page)).height).toBe(0);
   await page.keyboard.down('ArrowDown');
+  await page.clock.runFor(50);
   await expect.poll(async () => (await state(page)).duck).toBe(true);
   await page.keyboard.up('ArrowDown');
   await page.getByRole('button', { name: 'Pause game' }).click();
   const paused = await state(page);
-  await page.waitForTimeout(400);
+  await page.clock.runFor(400);
   expect((await state(page)).score).toBe(paused.score);
+  await page.evaluate(() => window.__bostikTest.bump(false));
   await page.getByRole('button', { name: 'Continue adventure' }).click();
+  await page.clock.runFor(3800);
   await expect.poll(async () => (await state(page)).screen).toBe('play');
+  await expect.poll(async () => (await state(page)).score).toBeGreaterThan(paused.score);
+  expect((await state(page)).hearts).toBe(3);
   for (let i = 0; i < 3; i++) {
     await page.evaluate(() => window.__bostikTest.bump());
-    await page.waitForTimeout(150);
+    await page.clock.runFor(150);
   }
   await expect(page.getByRole('heading', { name: 'Lovely exploring!' })).toBeVisible();
   const best = Number(await page.locator('#best').textContent());
   expect(best).toBeGreaterThan(0);
   await page.getByRole('button', { name: 'One more adventure' }).click();
+  await page.clock.runFor(3800);
   await expect.poll(async () => (await state(page)).screen).toBe('play');
   expect((await state(page)).hearts).toBe(3);
   await page.reload();
@@ -116,6 +130,65 @@ test('settings persist, mute, resizing, unavailable storage and visibility inter
   });
   await page.getByRole('button', { name: 'Enable sound' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Saving is unavailable' })).toBeVisible();
+});
+test('a persisted page restore recreates the game and working keyboard controls', async ({
+  page,
+}) => {
+  await page.goto('./');
+  await playKeyboard(page);
+  await Promise.all([
+    page.waitForEvent('load'),
+    page.evaluate(() => {
+      window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    }),
+  ]);
+  await expect(
+    page.getByRole('heading', { name: 'A little move. A big adventure.' }),
+  ).toBeVisible();
+  expect((await state(page)).screen).toBe('home');
+  await expect(page.locator('#world canvas')).toHaveCount(1);
+  await playKeyboard(page);
+  await page.keyboard.press('KeyP');
+  await expect.poll(async () => (await state(page)).screen).toBe('paused');
+  await page.goto('about:blank');
+  await page.goBack();
+  await expect(
+    page.getByRole('heading', { name: 'A little move. A big adventure.' }),
+  ).toBeVisible();
+  await expect(page.locator('#world canvas')).toHaveCount(1);
+});
+test('a synthetic widescreen camera keeps video and pose overlay aligned', async ({ page }) => {
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 360;
+      const stream = canvas.captureStream(24);
+      canvas.getContext('2d')!.fillRect(0, 0, 640, 360);
+      window.__track = stream.getVideoTracks()[0];
+      return stream;
+    };
+  });
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Let’s move' }).click();
+  await page.getByRole('button', { name: 'Allow camera' }).click();
+  await expect(page.locator('#camera-preview')).toBeVisible();
+  await expect
+    .poll(() =>
+      page
+        .locator('#camera-video')
+        .evaluate((v) => (v as HTMLVideoElement).videoWidth / (v as HTMLVideoElement).videoHeight),
+    )
+    .toBeCloseTo(16 / 9);
+  const bounds = await page.locator('.video-wrap').boundingBox();
+  const overlay = await page.locator('#pose-overlay').boundingBox();
+  expect(bounds!.width / bounds!.height).toBeCloseTo(16 / 9, 2);
+  expect(overlay!.width).toBeCloseTo(bounds!.width);
+  expect(overlay!.height).toBeCloseTo(bounds!.height);
+  await page.getByRole('button', { name: 'Stop camera & return to setup' }).click();
+  expect(await page.evaluate(() => window.__track.readyState)).toBe('ended');
+  await expect.poll(() => page.workers().length).toBe(0);
 });
 test('camera denial and absence recover to usable setup and keyboard fallback', async ({
   page,

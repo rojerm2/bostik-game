@@ -47,6 +47,8 @@ class BostikApp {
   private removeKeyboard!: () => void;
   private modalReturnFocus?: HTMLElement;
   private testReplay = false;
+  private disposed = false;
+  private resumeAfterCountdown = false;
   constructor() {
     $('#app').innerHTML = shell();
     this.camera = new CameraSession($('#camera-video'), () =>
@@ -63,6 +65,7 @@ class BostikApp {
     document.addEventListener('visibilitychange', this.onVisibility);
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('pagehide', this.dispose);
+    window.addEventListener('pageshow', this.onPageShow);
     void this.installOffline();
     if (__TEST_MODE__) this.exposeTestSeam();
     if (import.meta.env.DEV && new URL(location.href).searchParams.has('playground')) {
@@ -76,6 +79,13 @@ class BostikApp {
       this.toast('Saving is unavailable. You can still play.');
   }
   private bind() {
+    const video = $('#camera-video') as HTMLVideoElement;
+    const fitPreview = () => {
+      if (video.videoWidth && video.videoHeight)
+        $('.video-wrap').style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+    };
+    video.addEventListener('loadedmetadata', fitPreview);
+    video.addEventListener('resize', fitPreview);
     $('.brand').addEventListener('click', (e) => {
       e.preventDefault();
       this.home();
@@ -366,6 +376,7 @@ class BostikApp {
     this.simulation.setPaused(true);
     this.gate = new TrackingGate(this.settings.lossTimeout, performance.now());
     this.countdownEnd = performance.now() + 3600;
+    this.resumeAfterCountdown = resume;
     this.screen = 'countdown';
     this.update();
   }
@@ -390,6 +401,7 @@ class BostikApp {
         : this.trackingMessage;
   }
   private tick(dt: number) {
+    if (this.disposed) return;
     const now = performance.now();
     if (this.screen === 'countdown') {
       const remaining = Math.ceil((this.countdownEnd - now) / 1000);
@@ -400,7 +412,8 @@ class BostikApp {
         else {
           this.hub.clear();
           this.gate.confirm();
-          this.simulation.setPaused(false);
+          if (this.resumeAfterCountdown) this.simulation.resumeSafely();
+          else this.simulation.setPaused(false);
           this.screen = 'play';
           this.update();
         }
@@ -648,7 +661,7 @@ class BostikApp {
   }
   private openGuide() {
     this.modal(
-      `<span class="eyebrow">A HAPPY PLACE TO PLAY</span><h2 id="modal-title">A little help for grown-ups.</h2><div class="guide-content"><h3>Make room for small moves</h3><p>Clear the floor, secure the camera near the screen, and supervise the first setup. Keep the whole child in view. No need to run toward the camera or make big jumps.</p><h3>Find your comfortable middle</h3><p>Use a bright, evenly lit space. Stand still to calibrate, then try a small step each way, a little hop and a crouch. Child-left moves Pip screen-left. With feet out of view, explicitly choose “Raise both hands” in Parent corner.</p><h3>Pause whenever you like</h3><p>Use the pause button, P or Escape. Moving out of view pauses after a short delay. Return to a standing pose, choose Continue, and wait for the countdown. One adventurer at a time.</p><h3>Your video stays here</h3><p>Frames and body landmarks are processed on this device, never recorded or uploaded. No microphone, accounts or analytics. Only preferences and best score are saved. Return home or stop the camera to turn it off.</p><h3>Take it to the big screen</h3><p>HDMI from a laptop to a TV is recommended. Place the camera near the screen. Camera access needs HTTPS or localhost; an ordinary HTTP LAN address won’t work. Wireless casting latency is unverified.</p><h3>Offline adventures</h3><p>After “Ready for offline adventures” appears, the game, model and WASM are cached. Keep the page open until ready. Browser storage eviction can require another online visit. Reload to apply an available update.</p></div>`,
+      `<span class="eyebrow">A HAPPY PLACE TO PLAY</span><h2 id="modal-title">A little help for grown-ups.</h2><div class="guide-content"><h3>Make room for small moves</h3><p>Clear the floor, secure the camera near the screen, and supervise the first setup. Keep the whole child in view. No need to run toward the camera or make big jumps.</p><h3>Find your comfortable middle</h3><p>Use a bright, evenly lit space. Stand still to calibrate, then try a small step each way, a little hop and a crouch. Child-left moves Pip screen-left. With feet out of view, explicitly choose “Raise both hands” in Parent corner.</p><h3>Pause whenever you like</h3><p>Use the pause button, P or Escape. Moving out of view pauses after a short delay. Return to a standing pose, choose Continue, and wait for the countdown. One adventurer at a time.</p><h3>Your video stays here</h3><p>Frames and body landmarks are processed on this device, never recorded or uploaded. No microphone, accounts or analytics. Only preferences and best score are saved. Return home or stop the camera to turn it off.</p><h3>Take it to the big screen</h3><p>HDMI from a laptop to a TV is recommended. Place the camera near the screen. Camera access needs HTTPS or localhost; an ordinary HTTP LAN address won’t work. Wireless casting latency is unverified.</p><h3>Offline adventures</h3><p>After “Ready for offline adventures” appears, the game, model and WASM are cached. Keep the page open until ready. Browser storage eviction can require another online visit. Close and reopen this tab to apply an available update.</p></div>`,
     );
   }
   private async installOffline() {
@@ -668,7 +681,7 @@ class BostikApp {
       $('#offline-status').innerHTML = `${icon('shield')} Ready for offline adventures`;
       const update = () => {
         if (reg.waiting)
-          $('#offline-status').textContent = 'Update ready · reload to explore the new version';
+          $('#offline-status').textContent = 'Update ready · close and reopen this tab';
       };
       update();
       reg.addEventListener('updatefound', () =>
@@ -690,7 +703,14 @@ class BostikApp {
     this.hub.clear();
     this.pause('Welcome back when you’re ready');
   };
+  private onPageShow = (event: PageTransitionEvent) => {
+    // pagehide stops camera/models and tears down Phaser, including when the
+    // browser stores the document in its back/forward cache.
+    if (event.persisted) location.reload();
+  };
   private dispose = () => {
+    if (this.disposed) return;
+    this.disposed = true;
     this.stopTracking();
     this.removeKeyboard();
     this.audio.close();
@@ -721,8 +741,8 @@ class BostikApp {
         fps: this.meadow.scene.fps,
         input: this.hub.peek(),
       }),
-      bump: () => {
-        this.simulation.invulnerable = 0;
+      bump: (clearProtection = true) => {
+        if (clearProtection) this.simulation.invulnerable = 0;
         this.simulation.objects.push({
           id: -1,
           lane: this.simulation.lane,

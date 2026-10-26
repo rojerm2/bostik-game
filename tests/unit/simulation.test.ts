@@ -26,6 +26,24 @@ describe('seeded generation', () => {
   });
 });
 describe('fixed-step runner', () => {
+  it('protects a resumed player from an obstacle paused immediately at the crossing', () => {
+    const s = new Simulation('easy');
+    s.setPaused(false);
+    s.advance(0, { lane: 0, jump: false, duck: true });
+    s.objects = [{ id: -1, lane: 0, z: 0.01, kind: 'arch' }];
+    s.setPaused(true);
+    const distance = s.distance;
+    s.advance(10, neutral());
+    expect(s.distance).toBe(distance);
+    s.resumeSafely();
+    s.advance(1 / 60, neutral());
+    expect(s.hearts).toBe(3);
+    for (let i = 0; i < 90; i++) s.advance(1 / 60, neutral());
+    expect(s.invulnerable).toBe(0);
+    s.objects = [{ id: -2, lane: 0, z: 0.01, kind: 'log' }];
+    s.advance(1 / 60, neutral());
+    expect(s.hearts).toBe(2);
+  });
   it('provides a movement playground with no obstacles, scoring or damage', () => {
     const s = new Simulation('practice', 1, true);
     run(s, 30, 60, { lane: -1, jump: true, duck: false });

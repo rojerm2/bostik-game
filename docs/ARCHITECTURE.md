@@ -13,6 +13,8 @@ The page is TypeScript/Vite, menus are semantic HTML, and the original perspecti
 
 ## Coordinates and time
 
+The camera preview container follows the stream's intrinsic aspect ratio, including metadata and resize events. The mirrored video and normalized overlay share the same bounds, avoiding letterbox offsets on widescreen cameras. Device enumeration is optional: failure to list cameras does not close an already granted stream.
+
 Observations use `performance.now()` milliseconds and strictly increasing timestamps within each session. `pose-model.ts` mirrors raw model x once (`1 - x`). The preview video is mirrored with CSS; overlay landmarks already use screen coordinates. Increasing x therefore moves Pip screen-right. Synthetic fixtures directly use this final coordinate convention. Foot points are the model's ankle landmarks (27/28), used as visible foot evidence.
 
 Torso size is the vertical shoulder-to-hip separation. Lane offset is hip-center displacement divided by calibrated torso size, then an exponential filter with a 75 ms time constant. Default lane entry is 0.42 torso units, exit is 0.23; sensitivity scales both. Holding a side updates the same desired lane rather than issuing repeated relative changes.
@@ -34,6 +36,8 @@ The pinned MediaPipe loader uses `importScripts`, so Vite produces a **classic I
 Diagnostics report model execution time, capture-to-result software time, observed update frequency and render FPS. They do not measure the camera sensor's latency, display scanout, physical motion or HDMI/casting latency.
 
 ## Fairness and timing
+
+An explicit resume adds a 1.25-second protective bubble after the frozen countdown. This prevents damage on the first resumed frame when the player paused at an obstacle and held controls were cleared. Page teardown is idempotent; a page restored from the browser's back/forward cache reloads into a fresh game because the old camera, models and renderer were already disposed.
 
 Every row reserves a clear lane; the certified lane changes by at most one lane per row. Encounter spacing is 2.8–3.3 seconds at the current fixed difficulty speed. The validator independently rejects blocking that lane or spacing below a conservative 1.8-second reaction allowance plus 0.22 seconds per lane traversed. This is a guaranteed achievable route, not a guarantee that any choice the player makes will be safe.
 

@@ -102,6 +102,12 @@ export class Simulation {
     this.accumulator = 0;
     this.duck = false;
   }
+  resumeSafely() {
+    this.setPaused(false);
+    // Inputs are cleared during the countdown. Allow a comfortable moment to act
+    // even when the interruption happened immediately before an obstacle.
+    this.invulnerable = Math.max(this.invulnerable, 1.25);
+  }
   drainEvents() {
     const result = this.events;
     this.events = [];

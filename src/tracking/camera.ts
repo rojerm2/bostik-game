@@ -56,7 +56,14 @@ export class CameraSession {
     return epoch === this.epoch;
   }
   async list() {
-    return ((await this.devices?.enumerateDevices()) || []).filter((d) => d.kind === 'videoinput');
+    try {
+      return ((await this.devices?.enumerateDevices?.()) || []).filter(
+        (d) => d.kind === 'videoinput',
+      );
+    } catch {
+      // Enumeration is optional. A working granted stream should remain usable.
+      return [];
+    }
   }
   get active() {
     return !!this.stream?.getVideoTracks().some((t) => t.readyState === 'live');

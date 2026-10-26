@@ -1,6 +1,6 @@
 # Testing and physical acceptance
 
-Executed locally on 2026-10-26: **lint passed, typecheck passed, all 38 unit/integration tests passed, production build passed, and all 8 browser tests passed**. Browser checks cover the actual built subpath, real-model inference on fake video, CPU fallback, resource cleanup, synthetic calibration/controls, and offline restart. GitHub-hosted CI is a separate execution.
+The suite contains **40 unit/integration checks and 12 browser checks**. Current results are available in [GitHub CI](https://github.com/rojerm2/bostik-game/actions/workflows/ci.yml). Browser checks exercise the built subpath, real-model inference on synthetic video, CPU fallback, resource cleanup, synthetic calibration/controls, history restoration, a widescreen canvas camera, and offline restart.
 
 Automated checks establish software behavior. A real camera opening and a model processing frames do not establish a child's gesture accuracy, comfort, or end-to-end latency. The first release remains **awaiting physical movement acceptance**.
 
@@ -45,6 +45,6 @@ Record browser/device, camera/lighting/clothing, misses/false actions, comfortab
 - [ ] Background/restore the page while jumping/crouching; no stuck inputs, score gain while paused, large time steps or sudden collisions.
 - [ ] Test the intended HDMI/TV arrangement. Record latency/comfort. Wireless casting latency remains unverified unless actually tested.
 - [ ] If Android is desired, test Android Chrome on actual hardware. Desktop viewport emulation does not count.
-- [ ] Verify the actual HTTPS deployment URL and a warmed offline restart there, including model/WASM loading.
+- [x] Verify the actual HTTPS deployment URL and a warmed offline restart there, including model/WASM loading. Verified automatically at https://rojerm2.github.io/bostik-game/ with synthetic camera video; this does not establish physical movement accuracy.
 
 Only the supervising adult can complete the intended-child checklist. Pending checks keep the development goal awaiting validation; they do not stop independent implementation and packaging.

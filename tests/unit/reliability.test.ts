@@ -113,6 +113,23 @@ describe('camera lifecycle independent of pose recognition', () => {
     expect(f.stop).toHaveBeenCalledTimes(2);
     expect(f.video.srcObject).toBeNull();
   });
+  it('keeps a granted stream usable when camera enumeration is denied or unavailable', async () => {
+    for (const absent of [false, true]) {
+      const f = setup();
+      if (absent) delete (f.devices as Partial<MediaDevices>).enumerateDevices;
+      else
+        f.devices.enumerateDevices = vi.fn(async () => {
+          throw new Error('Enumeration denied');
+        });
+      const session = new CameraSession(f.video, vi.fn(), f.devices);
+      await session.start();
+      expect(await session.list()).toEqual([]);
+      expect(session.active).toBe(true);
+      expect(f.stop).not.toHaveBeenCalled();
+      session.stop();
+      expect(f.stop).toHaveBeenCalledOnce();
+    }
+  });
   it('stops late permission grants without attaching them', async () => {
     const f = setup();
     let resolve!: (s: MediaStream) => void;
