@@ -28,6 +28,8 @@ Initial **CPU worker** snapshot with that real camera: **164 ms inference**, **1
 
 ## Adult-run acceptance: pending
 
+A separate 65-second synthetic-video model soak on the deployed HTTPS app stayed active. Under heavy local load it measured about 683 ms inference / 695 ms software pipeline / 1.4 pose Hz / 47 render FPS. At this latency, stale observations are suppressed and camera gameplay cannot be considered physically accepted. The normal unloaded webcam snapshot and this stressed run are distinct observations.
+
 Later loaded-system browser runs measured about 184–225 ms inference and 4–5 pose Hz. Performance varies with load; use the complete range of observations when tuning, rather than treating the initial snapshot as a guarantee.
 
 Record browser/device, camera/lighting/clothing, misses/false actions, comfortable sensitivity, session length, fatigue and software timing. Never record or commit identifying child captures.

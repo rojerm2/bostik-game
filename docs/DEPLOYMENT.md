@@ -2,6 +2,8 @@
 
 The default build is configured for the supplied repository's `/bostik-game/` subpath. It contains no server requirement or secret. Use HTTPS in production.
 
+Live deployment verified 2026-10-26: **https://rojerm2.github.io/bostik-game/**. The public URL returned HTTP 200 and passed welcome, keyboard tutorial/countdown/play, absence of the test seam, complete offline reload, local model/WASM inference on fake camera video, camera cleanup and local-only request checks. Pages is configured for Actions and HTTPS. Physical child acceptance is still a separate pending requirement.
+
 ## GitHub Pages
 
 1. Push the feature branch to `rojerm2/bostik-game` and review it through the repository's normal workflow. This work does not merge branches or change protection settings.

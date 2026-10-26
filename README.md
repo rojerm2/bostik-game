@@ -2,6 +2,8 @@
 
 Little steps. Big adventures. Help Pip the fox explore Sunbeam Meadow by stepping left and right, making little hops, and crouching under leafy arches. An original, gentle three-lane runner for a young child and a supervising adult.
 
+**[Play Bostik Game](https://rojerm2.github.io/bostik-game/)** — HTTPS deployment verified on 2026-10-26, including keyboard gameplay and a warmed offline restart with real model inference on fake camera video. Intended-child physical acceptance remains pending.
+
 ## Play locally
 
 Use Node.js 24+ and a current Chrome or Edge on Windows:

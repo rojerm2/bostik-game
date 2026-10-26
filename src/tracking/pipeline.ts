@@ -19,6 +19,7 @@ export class PosePipeline {
   private lastVideoTime = -1;
   private lastOffer = -Infinity;
   private lastResult = 0;
+  private recovering = false;
   private base = new URL(`${import.meta.env.BASE_URL}vision`, location.origin).href;
   stats: PipelineStats = {
     inferenceMs: 0,
@@ -41,15 +42,7 @@ export class PosePipeline {
       this.worker?.terminate();
       this.worker = undefined;
       if (this.disposed) return;
-      this.stats.backend = 'main-thread';
-      this.hz = Math.min(6, this.hz);
-      try {
-        this.model = await (await import('./pose-model')).createModel(this.base);
-      } catch {
-        throw new Error(
-          'The movement model could not load. Check your connection, then retry setup. Run “npm run assets” for a local build.',
-        );
-      }
+      await this.startFallback();
     }
     if (this.disposed) {
       this.model?.close();
@@ -57,6 +50,25 @@ export class PosePipeline {
       return;
     }
     this.loop();
+  }
+  private async startFallback() {
+    this.recovering = true;
+    this.worker?.terminate();
+    this.worker = undefined;
+    this.rejectPending = undefined;
+    this.stats.backend = 'main-thread';
+    this.hz = Math.min(6, this.hz);
+    try {
+      const model = await (await import('./pose-model')).createModel(this.base);
+      if (this.disposed) model.close();
+      else this.model = model;
+    } catch {
+      throw new Error(
+        'The movement model could not load. Check your connection, then retry setup. Run “npm run assets” for a local build.',
+      );
+    } finally {
+      this.recovering = false;
+    }
   }
   private initWorker(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -89,6 +101,7 @@ export class PosePipeline {
     const now = performance.now();
     if (
       document.hidden ||
+      this.recovering ||
       this.lane.busy ||
       this.video.readyState < 2 ||
       this.video.currentTime === this.lastVideoTime ||
@@ -127,10 +140,20 @@ export class PosePipeline {
           this.output(observation);
         },
       )
-      .catch(() => {
+      .catch(async () => {
         if (!this.disposed) {
-          this.failed('Movement tracking stopped. Please retry camera setup.');
-          this.stop();
+          if (this.worker) {
+            try {
+              await this.startFallback();
+              return;
+            } catch {
+              /* actionable setup error below */
+            }
+          }
+          if (!this.disposed) {
+            this.failed('Movement tracking stopped. Please retry camera setup.');
+            this.stop();
+          }
         }
       });
   };

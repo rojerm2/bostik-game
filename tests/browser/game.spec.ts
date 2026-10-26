@@ -142,6 +142,7 @@ test('camera denial and absence recover to usable setup and keyboard fallback', 
 test('real locally hosted model processes fake video, stops and reopens without live tracks', async ({
   page,
 }) => {
+  test.setTimeout(150000);
   const requests: { url: string; method: string }[] = [];
   page.on('request', (r) => requests.push({ url: r.url(), method: r.method() }));
   await page.goto('./');
@@ -152,7 +153,7 @@ test('real locally hosted model processes fake video, stops and reopens without 
       timeout: 45000,
     });
     await expect
-      .poll(async () => (await state(page)).stats?.processed, { timeout: 20000 })
+      .poll(async () => (await state(page)).stats?.processed, { timeout: 45000 })
       .toBeGreaterThan(3);
     const metrics = (await state(page)).stats;
     console.log('REAL MODEL / SYNTHETIC VIDEO pipeline sample:', metrics);
@@ -192,17 +193,69 @@ test('worker failure uses the bounded main-thread model fallback', async ({ page
   expect((await state(page)).stats?.backend).toBe('main-thread');
   await page.getByRole('button', { name: 'Stop camera & return to setup' }).click();
 });
-test('missing model/WASM fails usefully and can retry', async ({ page }) => {
-  await page.route('**/vision/**', (route) => route.abort());
+test('worker frame failure recovers through the main-thread model without replacing the stream', async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  await page.addInitScript(() => {
+    const NativeWorker = window.Worker;
+    window.Worker = new Proxy(NativeWorker, {
+      construct(Target, args) {
+        const worker = Reflect.construct(Target, args) as Worker;
+        const post = worker.postMessage.bind(worker);
+        worker.postMessage = ((message: { type?: string }, transfer?: Transferable[]) => {
+          if (message.type === 'frame')
+            queueMicrotask(() =>
+              worker.onmessage?.(
+                new MessageEvent('message', {
+                  data: { type: 'error', message: 'Injected worker frame failure' },
+                }),
+              ),
+            );
+          else post(message, transfer || []);
+        }) as Worker['postMessage'];
+        return worker;
+      },
+    });
+  });
   await page.goto('./');
   await page.getByRole('button', { name: 'Let’s move' }).click();
   await page.getByRole('button', { name: 'Allow camera' }).click();
-  await expect(page.locator('#setup-message')).toContainText('could not load', { timeout: 55000 });
-  await page.unroute('**/vision/**');
-  await page.getByRole('button', { name: 'Allow camera' }).click();
-  await expect(page.getByRole('button', { name: 'I’m standing in the middle' })).toBeVisible({
-    timeout: 45000,
-  });
+  await expect
+    .poll(async () => (await state(page)).stats?.processed, { timeout: 60000 })
+    .toBeGreaterThan(3);
+  expect((await state(page)).stats?.backend).toBe('main-thread');
+  expect(
+    await page
+      .locator('#camera-video')
+      .evaluate(
+        (v) => ((v as HTMLVideoElement).srcObject as MediaStream).getVideoTracks()[0].readyState,
+      ),
+  ).toBe('live');
+  await page.getByRole('button', { name: 'Stop camera & return to setup' }).click();
+});
+test.describe('asset failures without service-worker cache', () => {
+  test.use({ serviceWorkers: 'block' });
+  for (const extension of ['wasm', 'task']) {
+    test(`missing .${extension} fails usefully and can retry`, async ({ page, context }) => {
+      const pattern = new RegExp(`/vision/[^?]+\\.${extension}$`);
+      // Context routing covers the dedicated inference worker. Page routing does not.
+      await context.route(pattern, (route) =>
+        route.fulfill({ status: 404, body: 'Missing test asset' }),
+      );
+      await page.goto('./');
+      await page.getByRole('button', { name: 'Let’s move' }).click();
+      await page.getByRole('button', { name: 'Allow camera' }).click();
+      await expect(page.locator('#setup-message')).toContainText('could not load', {
+        timeout: 55000,
+      });
+      await context.unroute(pattern);
+      await page.getByRole('button', { name: 'Allow camera' }).click();
+      await expect(page.getByRole('button', { name: 'I’m standing in the middle' })).toBeVisible({
+        timeout: 45000,
+      });
+    });
+  }
 });
 test('synthetic observations drive calibration, combined moves, loss, ambiguity and stable resume', async ({
   page,
@@ -286,6 +339,7 @@ test('warm offline installation caches model/WASM and restarts without the netwo
   page,
   context,
 }) => {
+  test.setTimeout(90000);
   await page.goto('./');
   await expect(page.locator('#offline-status')).toContainText('Ready for offline', {
     timeout: 30000,
@@ -307,5 +361,7 @@ test('warm offline installation caches model/WASM and restarts without the netwo
   await expect(page.getByRole('button', { name: 'I’m standing in the middle' })).toBeVisible({
     timeout: 45000,
   });
-  await expect.poll(async () => (await state(page)).stats?.processed).toBeGreaterThan(0);
+  await expect
+    .poll(async () => (await state(page)).stats?.processed, { timeout: 45000 })
+    .toBeGreaterThan(0);
 });

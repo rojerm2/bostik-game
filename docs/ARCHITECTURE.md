@@ -25,6 +25,8 @@ Invalid/low-confidence torso data immediately clears inputs. Missing feet disabl
 
 ## Inference and resource ownership
 
+If a worker fails during frame processing, the pipeline terminates it and initializes the main-thread compatibility model without replacing the camera stream. No new frames are offered during recovery. Tracking-loss suppression and the pause latch remain active, and stable reacquisition plus explicit resume are still required during gameplay.
+
 The pinned MediaPipe loader uses `importScripts`, so Vite produces a **classic IIFE worker** with a CPU delegate. If the worker cannot initialize, the page uses CPU at at most 6 Hz. The parent setting caps ordinary inference at 8 or 15 Hz; it is a ceiling, not a promised rate. A GPU experiment on the available Windows/Edge environment failed during inference and reduced rendering responsiveness, so it is not enabled in this release.
 
 `SingleFlight` has no waiting queue. Capture begins only when idle, on a fresh video frame. At most one bitmap/inference is in flight. Dropped offers are not buffered. Bitmaps close in `finally`; transferred bitmaps also close in the worker. Session invalidation prevents late results from applying. Worker termination releases worker/model resources; fallback models close explicitly. Camera grants arriving after cancellation are stopped before attachment. No frame, landmark array or personal body measurement is logged or stored.
