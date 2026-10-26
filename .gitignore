@@ -14,3 +14,4 @@
 /.env.*.local
 # Reproducibly retrieved model and runtime assets
 /public/vision/
+/public/licenses/
