@@ -1,0 +1,9 @@
+.ai-local
+.codex-local
+Codex_Bostik_Game_Prompt.md
+node_modules
+dist
+public/vision
+package-lock.json
+test-results
+playwright-report

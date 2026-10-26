@@ -5,5 +5,16 @@ export default ts.config(
   { ignores: ['dist/**', 'node_modules/**', '.ai-local/**', 'public/vision/**'] },
   js.configs.recommended,
   ...ts.configs.recommended,
-  { files: ['scripts/**/*.mjs'], languageOptions: { globals: { process: 'readonly', console: 'readonly', fetch: 'readonly', URL: 'readonly', Buffer: 'readonly' } } },
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+        Buffer: 'readonly',
+      },
+    },
+  },
 );
