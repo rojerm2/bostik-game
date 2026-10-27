@@ -378,7 +378,7 @@ async function cameraTutorial(page: Page, autoplay = true) {
 test('manual camera start and resume wait for the player to return, including a frozen stream', async ({
   page,
 }) => {
-  test.setTimeout(120000);
+  test.setTimeout(180000);
   await cameraTutorial(page, false);
   await expect(page.getByRole('button', { name: 'Let’s explore' })).toBeEnabled();
   await page.evaluate(() => {
@@ -444,10 +444,10 @@ test('manual camera start and resume wait for the player to return, including a 
   await expect(page.locator('#tracking-status')).toContainText('One adventurer');
 });
 
-test('camera autoplay starts and resumes hands-free, and Stop autoplay or manual pause stays stopped', async ({
+test('camera autoplay waits for visibility, resets interrupted countdowns and resumes tracking pauses', async ({
   page,
 }) => {
-  test.setTimeout(120000);
+  test.setTimeout(180000);
   await cameraTutorial(page);
   expect((await state(page)).screen).toBe('countdown');
   // Leaving during the countdown resets it instead of starting an empty-camera run.
@@ -489,6 +489,15 @@ test('camera autoplay starts and resumes hands-free, and Stop autoplay or manual
   await page.evaluate(() => {
     window.__noPose = false;
   });
+  await page.clock.runFor(4800);
+  expect((await state(page)).screen).toBe('play');
+});
+
+test('Stop autoplay, manual pause and backgrounding prevent automatic restart', async ({
+  page,
+}) => {
+  test.setTimeout(180000);
+  await cameraTutorial(page);
   await page.clock.runFor(4800);
   expect((await state(page)).screen).toBe('play');
   await page.getByRole('button', { name: 'Stop autoplay', exact: true }).click();

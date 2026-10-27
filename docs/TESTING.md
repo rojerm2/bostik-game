@@ -1,6 +1,6 @@
 # Testing and physical acceptance
 
-The suite contains **42 unit/integration checks and 14 browser checks**. Current results are available in [GitHub CI](https://github.com/rojerm2/bostik-game/actions/workflows/ci.yml). Browser checks exercise the built subpath, real-model inference on synthetic video, CPU fallback, resource cleanup, synthetic calibration/controls, history restoration, a widescreen canvas camera, and offline restart.
+The suite contains **42 unit/integration checks and 15 browser checks**. Current results are available in [GitHub CI](https://github.com/rojerm2/bostik-game/actions/workflows/ci.yml). Browser checks exercise the built subpath, real-model inference on synthetic video, CPU fallback, resource cleanup, synthetic calibration/controls, history restoration, a widescreen canvas camera, and offline restart.
 
 Automated checks establish software behavior. A real camera opening and a model processing frames do not establish a child's gesture accuracy, comfort, or end-to-end latency. The first release remains **awaiting physical movement acceptance**.
 
