@@ -1,4 +1,5 @@
 import type { Actions, Difficulty, Lane } from '../types';
+import { DIFFICULTIES } from '../types';
 export type ObjectKind = 'star' | 'log' | 'arch';
 export interface TrackObject {
   id: number;
@@ -83,7 +84,7 @@ export class Simulation {
     seed = 1729,
     public readonly sandbox = false,
   ) {
-    this.speed = difficulty === 'practice' ? 8 : 11;
+    this.speed = DIFFICULTIES[difficulty].speed;
     this.patterns = generatePatterns(seed, this.speed, 512);
     if (!validatePatterns(this.patterns, this.speed)) throw new Error('Unsafe level');
   }

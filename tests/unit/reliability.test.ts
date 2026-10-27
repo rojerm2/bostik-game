@@ -3,7 +3,7 @@ import { InputHub } from '../../src/input';
 import { loadSaved, save } from '../../src/storage';
 import { SingleFlight } from '../../src/tracking/single-flight';
 import { CameraSession, cameraError } from '../../src/tracking/camera';
-import { DEFAULT_SETTINGS } from '../../src/types';
+import { DEFAULT_SETTINGS, DIFFICULTIES } from '../../src/types';
 import { localAssetRequest } from '../../src/privacy';
 describe('local-only network policy', () => {
   it('permits static GETs and rejects telemetry, foreign origins and writes', () => {
@@ -52,6 +52,20 @@ describe('common input and storage', () => {
       ),
     ).toBe(false);
     expect(save(undefined, { settings: DEFAULT_SETTINGS, best: 2 })).toBe(false);
+  });
+  it('migrates autoplay preferences and preserves every supported difficulty', () => {
+    const read = (settings: object) =>
+      loadSaved({ getItem: () => JSON.stringify({ settings, best: 10 }) });
+    expect(read({ difficulty: 'easy' }).settings.cameraAutoplay).toBe(true);
+    expect(read({ cameraAutoplay: 'false', difficulty: 'invalid' }).settings).toEqual(
+      DEFAULT_SETTINGS,
+    );
+    for (const difficulty of Object.keys(DIFFICULTIES)) {
+      const result = read({ difficulty, cameraAutoplay: false });
+      expect(result.settings.difficulty).toBe(difficulty);
+      expect(result.settings.cameraAutoplay).toBe(false);
+      expect(result.best).toBe(10);
+    }
   });
 });
 describe('inference lifecycle', () => {

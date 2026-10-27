@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS } from './types';
+import { DEFAULT_SETTINGS, DIFFICULTIES } from './types';
 import type { Settings } from './types';
 export interface Saved {
   settings: Settings;
@@ -13,11 +13,12 @@ export function loadSaved(storage: Pick<Storage, 'getItem'> | undefined): Saved 
     return {
       best: Math.floor(bounded(raw?.best, 0, 1e9, 0)),
       settings: {
+        cameraAutoplay: typeof s.cameraAutoplay === 'boolean' ? s.cameraAutoplay : true,
         sensitivity: bounded(s.sensitivity, 0.65, 1.6, 1),
         lossTimeout: bounded(s.lossTimeout, 300, 1000, 500),
         poseHz: [8, 15].includes(s.poseHz) ? s.poseHz : 15,
         jumpGesture: s.jumpGesture === 'hands' ? 'hands' : 'jump',
-        difficulty: s.difficulty === 'easy' ? 'easy' : 'practice',
+        difficulty: Object.keys(DIFFICULTIES).includes(s.difficulty) ? s.difficulty : 'practice',
         quality: s.quality === 'low' ? 'low' : 'high',
         sound: typeof s.sound === 'boolean' ? s.sound : true,
       },

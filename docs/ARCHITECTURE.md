@@ -23,11 +23,11 @@ Calibration needs at least 1.4 seconds of stable, reliable samples, at least eig
 
 Jump detection needs a rising torso and rising feet followed by sustained relative lift. Grounded/airborne/recovery states allow one trigger per landing, with 220 ms of stable grounded evidence to rearm. Crouching alone moves downward and cannot satisfy a jump. Crouch has separate duration-based entry/release, and horizontal movement remains independent of jumping. The alternative requires both visible hands above the shoulders for 160 ms, then lowered hands to rearm.
 
-Invalid/low-confidence torso data immediately clears inputs. Missing feet disable only the physical hop; lane/duck remain available with an explanatory status. Out-of-order, nonfinite, future or >250 ms stale observations cannot trigger actions. Any interruption requires 600 ms stable standing before new gestures. After 500 ms tracking loss (configurable), simulation pauses and stays paused until explicit confirmation and a visible countdown. An empty result stream also triggers the timeout. Page visibility/blur pauses and clears held inputs.
+Invalid/low-confidence torso data immediately clears inputs. Missing feet disable only the physical hop; lane/duck remain available with an explanatory status. Out-of-order, nonfinite, future or >250 ms stale observations cannot trigger actions. Any interruption requires 600 ms stable standing before new gestures. After 500 ms tracking loss (configurable), simulation pauses. With camera autoplay enabled (the default), stable reacquisition arms a visible three-second countdown, then resumes. Initial autoplay also requires calibration and all four tutorial moves. Manual Start/Resume can be pressed while out of view: the countdown waits indefinitely for stable tracking and restarts on any tracking break. Stop autoplay, manual pause, page visibility loss and blur disarm automatic continuation and persist autoplay off. Enable autoplay re-arms it; parent settings also expose the preference. An empty result stream also triggers the timeout. Page visibility/blur pauses and clears held inputs.
 
 ## Inference and resource ownership
 
-If a worker fails during frame processing, the pipeline terminates it and initializes the main-thread compatibility model without replacing the camera stream. No new frames are offered during recovery. Tracking-loss suppression and the pause latch remain active, and stable reacquisition plus explicit resume are still required during gameplay.
+If a worker fails during frame processing, the pipeline terminates it and initializes the main-thread compatibility model without replacing the camera stream. No new frames are offered during recovery. Tracking-loss suppression and the pause latch remain active, and stable reacquisition plus the visible countdown are still required during gameplay.
 
 The pinned MediaPipe loader uses `importScripts`, so Vite produces a **classic IIFE worker** with a CPU delegate. If the worker cannot initialize, the page uses CPU at at most 6 Hz. The parent setting caps ordinary inference at 8 or 15 Hz; it is a ceiling, not a promised rate. A GPU experiment on the available Windows/Edge environment failed during inference and reduced rendering responsiveness, so it is not enabled in this release.
 
@@ -37,7 +37,9 @@ Diagnostics report model execution time, capture-to-result software time, observ
 
 ## Fairness and timing
 
-An explicit resume adds a 1.25-second protective bubble after the frozen countdown. This prevents damage on the first resumed frame when the player paused at an obstacle and held controls were cleared. Page teardown is idempotent; a page restored from the browser's back/forward cache reloads into a fresh game because the old camera, models and renderer were already disposed.
+Every resume adds a 1.25-second protective bubble after the frozen countdown. This prevents damage on the first resumed frame when the player paused at an obstacle and held controls were cleared. Page teardown is idempotent; a page restored from the browser's back/forward cache reloads into a fresh game because the old camera, models and renderer were already disposed.
+
+Practice, Easy, Medium and Hard use speeds of 8, 11, 15 and 19 track units per second respectively. The home selector and parent settings share the same presets; a change applies to the next run.
 
 Every row reserves a clear lane; the certified lane changes by at most one lane per row. Encounter spacing is 2.8–3.3 seconds at the current fixed difficulty speed. The validator independently rejects blocking that lane or spacing below a conservative 1.8-second reaction allowance plus 0.22 seconds per lane traversed. This is a guaranteed achievable route, not a guarantee that any choice the player makes will be safe.
 

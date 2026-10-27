@@ -11,6 +11,9 @@ interface TestAPI {
     duck: boolean;
     height: number;
     score: number;
+    speed: number;
+    difficulty: string;
+    distance: number;
     hearts: number;
     fps: number;
     input: { lane: number; jump: boolean; duck: boolean };
@@ -29,6 +32,7 @@ declare global {
     __replayInterval: number;
     __body: ReturnType<typeof body>;
     __noPose: boolean;
+    __ambiguous: boolean;
     __track: MediaStreamTrack;
   }
 }
@@ -222,7 +226,7 @@ test('real locally hosted model processes fake video, stops and reopens without 
   for (let i = 0; i < 2; i++) {
     await page.getByRole('button', { name: 'Let’s move' }).click();
     await page.getByRole('button', { name: 'Allow camera' }).click();
-    await expect(page.getByRole('button', { name: 'I’m standing in the middle' })).toBeVisible({
+    await expect(page.getByRole('button', { name: 'Start calibration' })).toBeVisible({
       timeout: 45000,
     });
     await expect
@@ -233,7 +237,7 @@ test('real locally hosted model processes fake video, stops and reopens without 
     await page.locator('#camera-video').evaluate((v) => {
       window.__track = ((v as HTMLVideoElement).srcObject as MediaStream).getVideoTracks()[0];
     });
-    await page.getByRole('button', { name: 'I’m standing in the middle' }).click();
+    await page.getByRole('button', { name: 'Start calibration' }).click();
     await expect(page.getByLabel('Camera selection').locator('option')).not.toHaveCount(0);
     await page.getByRole('button', { name: 'Stop camera & return to setup' }).click();
     expect(
@@ -324,104 +328,279 @@ test.describe('asset failures without service-worker cache', () => {
       });
       await context.unroute(pattern);
       await page.getByRole('button', { name: 'Allow camera' }).click();
-      await expect(page.getByRole('button', { name: 'I’m standing in the middle' })).toBeVisible({
+      await expect(page.getByRole('button', { name: 'Start calibration' })).toBeVisible({
         timeout: 45000,
       });
     });
   }
 });
-test('synthetic observations drive calibration, combined moves, loss, ambiguity and stable resume', async ({
-  page,
-}) => {
+async function replayPose(page: Page, pose = body(), duration = 400) {
+  await page.evaluate((b) => {
+    window.__body = b;
+  }, pose);
+  await page.clock.runFor(duration);
+}
+async function cameraTutorial(page: Page, autoplay = true) {
+  if (!autoplay)
+    await page.addInitScript(() => {
+      localStorage.setItem('bostik-v1', JSON.stringify({ settings: { cameraAutoplay: false } }));
+    });
+  await page.clock.install({ time: new Date('2026-10-27T00:00:00Z') });
   await page.goto('./');
+  await page.clock.pauseAt(new Date('2026-10-27T01:00:00Z'));
   await page.evaluate((b) => {
     window.__bostikTest.beginReplay();
     window.__body = b;
     window.__noPose = false;
+    window.__ambiguous = false;
     window.__replayInterval = window.setInterval(
       () =>
         window.__bostikTest.observe({
           timestamp: performance.now(),
-          bodies: window.__noPose ? [] : [window.__body],
+          bodies: window.__noPose
+            ? []
+            : window.__ambiguous
+              ? [window.__body, window.__body]
+              : [window.__body],
         }),
       65,
     );
   }, body());
+  await page.clock.runFor(2300);
   await expect(page.getByRole('heading', { name: 'A little wiggle first.' })).toBeVisible();
-  await page.waitForTimeout(800);
-  for (const x of [-0.7, 0.7, 0]) {
-    await page.evaluate((b) => {
-      window.__body = b;
-    }, body({ x }));
-    await page.waitForTimeout(400);
-  }
-  for (const lift of [0.05, 0.12, 0.2, 0.28, 0.28, 0.2, 0]) {
-    await page.evaluate(
-      (b) => {
-        window.__body = b;
-      },
-      body({ lift, x: 0.7 }),
-    );
-    await page.waitForTimeout(80);
-  }
-  await page.evaluate(
-    (b) => {
-      window.__body = b;
-    },
-    body({ crouch: 0.4, footLift: 0 }),
-  );
-  await page.waitForTimeout(300);
-  await page.evaluate((b) => {
-    window.__body = b;
-  }, body());
+  for (const x of [-0.7, 0.7, 0]) await replayPose(page, body({ x }));
+  for (const lift of [0.05, 0.12, 0.2, 0.28, 0.28, 0.2, 0])
+    await replayPose(page, body({ lift, x: 0.7 }), 80);
+  await replayPose(page, body({ crouch: 0.4, footLift: 0 }), 330);
+  await replayPose(page, body(), 100);
+}
+
+test('manual camera start and resume wait for the player to return, including a frozen stream', async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  await cameraTutorial(page, false);
   await expect(page.getByRole('button', { name: 'Let’s explore' })).toBeEnabled();
+  await page.evaluate(() => {
+    window.__noPose = true;
+  });
   await page.getByRole('button', { name: 'Let’s explore' }).click();
-  await expect.poll(async () => (await state(page)).screen).toBe('play');
-  await page.evaluate(
-    (b) => {
-      window.__body = b;
-    },
-    body({ x: -0.7 }),
-  );
-  await expect.poll(async () => (await state(page)).lane).toBe(-1);
+  await page.clock.runFor(6000);
+  expect((await state(page)).screen).toBe('countdown');
+  await expect(page.locator('#countdown-number')).toHaveText('Find your spot');
+  expect((await state(page)).score).toBe(0);
+  await page.evaluate(() => {
+    window.__noPose = false;
+  });
+  await page.clock.runFor(4200);
+  expect((await state(page)).screen).toBe('play');
+  await replayPose(page, body({ x: -0.7 }));
+  expect((await state(page)).lane).toBe(-1);
   await page.keyboard.press('ArrowRight');
   expect((await state(page)).lane).toBe(-1);
   await page.evaluate(() => {
     window.__noPose = true;
   });
-  await expect.poll(async () => (await state(page)).screen).toBe('paused');
-  await expect(page.getByRole('button', { name: 'Continue adventure' })).toBeDisabled();
+  await page.clock.runFor(800);
+  expect((await state(page)).screen).toBe('paused');
+  const frozen = (await state(page)).score;
+  await expect(page.getByRole('button', { name: 'Resume when visible' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Resume when visible' }).click();
+  await page.clock.runFor(6000);
+  expect((await state(page)).screen).toBe('countdown');
+  expect((await state(page)).score).toBe(frozen);
   await page.evaluate((b) => {
     window.__body = b;
     window.__noPose = false;
   }, body());
-  await expect(page.getByRole('button', { name: 'Continue adventure' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Continue adventure' }).click();
-  await expect.poll(async () => (await state(page)).screen).toBe('play');
-  // A frozen stream produces no observations at all, rather than explicit empty poses.
+  await page.clock.runFor(4200);
+  expect((await state(page)).screen).toBe('play');
+  // No observations at all must expire tracking too.
   await page.evaluate(() => clearInterval(window.__replayInterval));
-  await expect.poll(async () => (await state(page)).screen).toBe('paused');
-  await expect(page.getByRole('button', { name: 'Continue adventure' })).toBeDisabled();
+  await page.clock.runFor(800);
+  expect((await state(page)).screen).toBe('paused');
   await expect(page.locator('#tracking-status')).toContainText('Stand tall');
+  await page.getByRole('button', { name: 'Resume when visible' }).click();
+  await page.clock.runFor(5000);
+  expect((await state(page)).screen).toBe('countdown');
   await page.evaluate((b) => {
+    window.__body = b;
     window.__replayInterval = window.setInterval(
-      () => window.__bostikTest.observe({ timestamp: performance.now(), bodies: [b] }),
+      () =>
+        window.__bostikTest.observe({
+          timestamp: performance.now(),
+          bodies: window.__ambiguous ? [b, b] : [b],
+        }),
       65,
     );
   }, body());
-  await expect(page.getByRole('button', { name: 'Continue adventure' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Continue adventure' }).click();
-  await expect.poll(async () => (await state(page)).screen).toBe('play');
-  await page.evaluate((b) => {
-    clearInterval(window.__replayInterval);
-    window.__replayInterval = window.setInterval(
-      () => window.__bostikTest.observe({ timestamp: performance.now(), bodies: [b, b] }),
-      65,
-    );
-  }, body());
-  await expect.poll(async () => (await state(page)).screen).toBe('paused');
+  await page.clock.runFor(4200);
+  expect((await state(page)).screen).toBe('play');
+  await page.evaluate(() => {
+    window.__ambiguous = true;
+  });
+  await page.clock.runFor(800);
+  expect((await state(page)).screen).toBe('paused');
   await expect(page.locator('#tracking-status')).toContainText('One adventurer');
 });
+
+test('camera autoplay starts and resumes hands-free, and Stop autoplay or manual pause stays stopped', async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  await cameraTutorial(page);
+  expect((await state(page)).screen).toBe('countdown');
+  // Leaving during the countdown resets it instead of starting an empty-camera run.
+  await page.evaluate(() => {
+    window.__noPose = true;
+  });
+  await page.clock.runFor(6000);
+  await expect(page.locator('#countdown-number')).toHaveText('Find your spot');
+  expect((await state(page)).score).toBe(0);
+  await page.screenshot({ path: '.ai-local/camera-waiting.png', fullPage: true });
+  await page.getByRole('button', { name: 'Stop autoplay & pause', exact: true }).click();
+  await page.clock.runFor(5000);
+  expect((await state(page)).screen).toBe('paused');
+  expect((await state(page)).score).toBe(0);
+  await page.getByRole('button', { name: 'Enable autoplay' }).click();
+  await page.evaluate(() => {
+    window.__noPose = false;
+  });
+  await page.clock.runFor(1800);
+  expect((await state(page)).screen).toBe('countdown');
+  await page.evaluate(() => {
+    window.__ambiguous = true;
+  });
+  await page.clock.runFor(5000);
+  await expect(page.locator('#countdown-number')).toHaveText('Find your spot');
+  await page.evaluate(() => {
+    window.__ambiguous = false;
+  });
+  await page.clock.runFor(4800);
+  expect((await state(page)).screen).toBe('play');
+  await page.evaluate(() => {
+    window.__noPose = true;
+  });
+  await page.clock.runFor(800);
+  expect((await state(page)).screen).toBe('paused');
+  const paused = (await state(page)).score;
+  await page.clock.runFor(4000);
+  expect((await state(page)).score).toBe(paused);
+  await page.evaluate(() => {
+    window.__noPose = false;
+  });
+  await page.clock.runFor(4800);
+  expect((await state(page)).screen).toBe('play');
+  await page.getByRole('button', { name: 'Stop autoplay', exact: true }).click();
+  expect((await state(page)).screen).toBe('paused');
+  const stopped = (await state(page)).score;
+  await page.clock.runFor(6000);
+  expect((await state(page)).screen).toBe('paused');
+  expect((await state(page)).score).toBe(stopped);
+  await expect(page.getByRole('button', { name: 'Enable autoplay' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  for (const viewport of [
+    { width: 844, height: 390 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    const card = (await page.locator('.center-card').boundingBox())!;
+    const preview = (await page.locator('#camera-preview').boundingBox())!;
+    expect(
+      card.x + card.width <= preview.x ||
+        card.y + card.height <= preview.y ||
+        preview.x + preview.width <= card.x ||
+        preview.y + preview.height <= card.y,
+    ).toBe(true);
+    await page.screenshot({
+      path: '.ai-local/camera-paused-' + viewport.width + '.png',
+      fullPage: true,
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.evaluate(() => {
+    window.__noPose = true;
+  });
+  await page.getByRole('button', { name: 'Enable autoplay' }).click();
+  await page.clock.runFor(5000);
+  expect((await state(page)).screen).toBe('paused');
+  await page.evaluate(() => {
+    window.__noPose = false;
+  });
+  await page.clock.runFor(4800);
+  expect((await state(page)).screen).toBe('play');
+  await page.keyboard.press('KeyP');
+  await page.clock.runFor(6000);
+  expect((await state(page)).screen).toBe('paused');
+  await expect(page.getByRole('button', { name: 'Enable autoplay' })).toBeVisible();
+  // Backgrounding an armed session disarms it, including during reacquisition.
+  await page.getByRole('button', { name: 'Enable autoplay' }).click();
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.clock.runFor(5000);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.clock.runFor(5000);
+  expect((await state(page)).screen).toBe('paused');
+  expect(
+    await page.evaluate(
+      () => JSON.parse(localStorage.getItem('bostik-v1')!).settings.cameraAutoplay,
+    ),
+  ).toBe(false);
+});
+
+test('all four difficulties select, persist and change the actual running speed', async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  await page.clock.install({ time: new Date('2026-10-27T00:00:00Z') });
+  await page.goto('./');
+  await page.clock.pauseAt(new Date('2026-10-27T01:00:00Z'));
+  await page.screenshot({ path: '.ai-local/difficulties-desktop.png', fullPage: true });
+  for (const [name, speed] of [
+    ['Practice trail', 8],
+    ['Easy adventure', 11],
+    ['Medium adventure', 15],
+    ['Hard adventure', 19],
+  ] as const) {
+    await page.getByRole('button', { name, exact: true }).click();
+    await page.reload();
+    await expect(page.getByRole('button', { name, exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await playKeyboard(page, true);
+    expect((await state(page)).speed).toBe(speed);
+    await expect(page.locator('#mode-label')).toContainText(name);
+    const before = (await state(page)).distance;
+    await page.clock.runFor(1000);
+    expect((await state(page)).distance - before).toBeCloseTo(speed, 0);
+    await page.getByRole('link', { name: 'Bostik Game home' }).click();
+  }
+  await page.getByRole('button', { name: 'Parent corner' }).click();
+  await expect(page.getByLabel('Adventure · next run')).toHaveValue('hard');
+  await expect(page.getByLabel('Camera autoplay')).toBeChecked();
+  await page.getByLabel('Camera autoplay').uncheck();
+  await page.getByLabel('Adventure · next run').selectOption('medium');
+  await page.getByRole('button', { name: 'Save settings' }).click();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Medium adventure', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByRole('button', { name: 'Parent corner' }).click();
+  await expect(page.getByLabel('Camera autoplay')).not.toBeChecked();
+});
+
 test('warm offline installation caches model/WASM and restarts without the network', async ({
   page,
   context,
@@ -445,7 +624,7 @@ test('warm offline installation caches model/WASM and restarts without the netwo
   ).toBeVisible();
   await page.getByRole('button', { name: 'Let’s move' }).click();
   await page.getByRole('button', { name: 'Allow camera' }).click();
-  await expect(page.getByRole('button', { name: 'I’m standing in the middle' })).toBeVisible({
+  await expect(page.getByRole('button', { name: 'Start calibration' })).toBeVisible({
     timeout: 45000,
   });
   await expect

@@ -127,6 +127,39 @@ summary:focus-visible {
 .quiet-button .icon {
   width: 18px;
 }
+.autoplay-toggle {
+  min-height: 43px;
+  padding: 10px 12px;
+  border: 1px solid #cbd8bd;
+  border-radius: 10px;
+  background: #e6ecd9;
+  color: #466b3e;
+}
+.autoplay-toggle[aria-pressed='true'] {
+  background: #28563f;
+  color: #fffdf1;
+  border-color: #28563f;
+}
+.countdown-card h2.waiting {
+  font-size: 36px;
+  line-height: 1.15;
+  letter-spacing: -1px;
+  max-width: 320px;
+  margin: 24px auto;
+}
+@media (max-width: 1100px) {
+  .site-header:has(#camera-autoplay:not([hidden])) .brand-tagline {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .header-actions .autoplay-toggle {
+    padding: 8px;
+    width: 36px;
+    height: 36px;
+    justify-content: center;
+  }
+}
 .divider {
   height: 23px;
   width: 1px;
@@ -244,6 +277,7 @@ h1 em {
 }
 .trail-options {
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
   margin-bottom: 16px;
 }
@@ -699,6 +733,7 @@ footer .icon {
   padding: 35px 50px;
   border-radius: 24px;
   min-width: 300px;
+  max-width: 100%;
 }
 .countdown-card h2 {
   font-size: 88px;
@@ -710,6 +745,9 @@ footer .icon {
 .countdown-card p {
   color: #85927c;
   font-size: 13px;
+}
+.countdown-card .text-button {
+  margin-inline: auto;
 }
 #hud {
   position: absolute;
@@ -1603,6 +1641,19 @@ select {
   .setup-stage #camera-preview {
     top: 12%;
     width: 33%;
+  }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .camera-dialog .stage-layer {
+    padding-right: 234px;
+  }
+}
+@media (max-width: 760px) {
+  .camera-dialog .stage-layer {
+    padding: 20px 16px 210px;
+  }
+  .camera-dialog #camera-preview {
+    bottom: 12px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

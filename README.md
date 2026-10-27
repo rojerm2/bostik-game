@@ -27,12 +27,12 @@ Open **http://127.0.0.1:4173/bostik-game/**. Never open `dist/index.html` direct
 ## Get moving
 
 1. Clear floor space and secure the camera near the screen. Have an adult supervise setup. HDMI from a Windows laptop to a TV is a useful home arrangement.
-2. Choose **Practice trail** or **Easy adventure**, then **Let's move**. Allow the camera, select a device if necessary, and put the whole body inside the guide.
-3. Stand still in the middle for calibration. Try all four moves before starting. Step or lean comfortably; returning to center returns Pip to center. The camera preview behaves like a mirror.
+2. Choose **Practice**, **Easy**, **Medium**, or **Hard**, then **Let's move**. Each level runs faster; start with Practice. Allow the camera, select a device if necessary, and put the whole body inside the guide.
+3. Press **Start calibration**, then walk back into the guide and stand still. Try all four moves; with camera autoplay on, the game starts automatically when you return to a steady standing pose. Step or lean comfortably; returning to center returns Pip to center. The camera preview behaves like a mirror.
 4. Make a small hop over a log. Crouch and hold to go under leaves. If the camera cannot see both feet, hopping is disabled; explicitly select **Raise both hands** in Parent corner, then recalibrate.
-5. Tracking loss pauses the game after 0.5 seconds by default. Return to a stable standing pose, choose **Continue adventure**, and wait for the countdown.
+5. Tracking loss freezes the game after 0.5 seconds by default. With autoplay on, return to a stable standing pose to resume after a three-second countdown. The countdown waits indefinitely while you are out of view and restarts if tracking breaks. **Stop autoplay** or manual Pause keeps the game stopped. **Enable autoplay** arms it again. With autoplay off, press **Resume when visible**, then walk back; no need to stay at the laptop.
 
-Keyboard mode: hold **Left/Right** or **A/D** for the corresponding lane; release for center. **Up**, **W**, or **Space** hops. Hold **Down/S** to crouch. **P/Escape** pauses. Large on-screen buttons are available in keyboard mode. Input modes never compete. Parent corner adjusts sensitivity, hop gesture, difficulty, sound, scene detail, inference rate and loss timeout.
+Keyboard mode: hold **Left/Right** or **A/D** for the corresponding lane; release for center. **Up**, **W**, or **Space** hops. Hold **Down/S** to crouch. **P/Escape** pauses. Large on-screen buttons are available in keyboard mode. Input modes never compete. Parent corner adjusts autoplay, sensitivity, hop gesture, difficulty, sound, scene detail, inference rate and loss timeout. Difficulty changes apply to the next run. Practice, Easy, Medium and Hard run at 8, 11, 15 and 19 track units per second.
 
 Three hearts and a gentle protective bubble make bumps forgiving. Practice introduces lanes, then hops, then crouches before mixing obstacles. Every generated encounter has a conservatively reachable clear route. Collect stars, try again, and save a local best score.
 

@@ -2,7 +2,13 @@
  * Timestamps use performance.now() milliseconds, strictly increasing within a session. */
 export type Lane = -1 | 0 | 1;
 export type Mode = 'camera' | 'keyboard';
-export type Difficulty = 'practice' | 'easy';
+export const DIFFICULTIES = {
+  practice: { label: 'Practice trail', description: 'Slow and guided', speed: 8 },
+  easy: { label: 'Easy adventure', description: 'A gentle pace', speed: 11 },
+  medium: { label: 'Medium adventure', description: 'A faster run', speed: 15 },
+  hard: { label: 'Hard adventure', description: 'The fastest trail', speed: 19 },
+} as const;
+export type Difficulty = keyof typeof DIFFICULTIES;
 export type JumpGesture = 'jump' | 'hands';
 export interface Point {
   x: number;
@@ -38,6 +44,7 @@ export interface Calibration {
   feet: boolean;
 }
 export interface Settings {
+  cameraAutoplay: boolean;
   sensitivity: number;
   jumpGesture: JumpGesture;
   difficulty: Difficulty;
@@ -48,6 +55,7 @@ export interface Settings {
 }
 export const neutral = (): Actions => ({ lane: 0, jump: false, duck: false });
 export const DEFAULT_SETTINGS: Settings = {
+  cameraAutoplay: true,
   sensitivity: 1,
   jumpGesture: 'jump',
   difficulty: 'practice',

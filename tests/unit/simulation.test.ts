@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { generatePatterns, validatePatterns, Simulation } from '../../src/game/simulation';
-import { neutral } from '../../src/types';
+import { DIFFICULTIES, neutral } from '../../src/types';
+import type { Difficulty } from '../../src/types';
 const run = (s: Simulation, seconds: number, fps = 60, input = neutral()) => {
   s.setPaused(false);
   for (let i = 0; i < seconds * fps; i++) s.advance(1 / fps, input);
@@ -8,7 +9,7 @@ const run = (s: Simulation, seconds: number, fps = 60, input = neutral()) => {
 describe('seeded generation', () => {
   it('certifies reachable safe routes for many seeds and speeds', () => {
     for (let seed = 0; seed < 1500; seed++)
-      for (const speed of [8, 11, 18])
+      for (const { speed } of Object.values(DIFFICULTIES))
         expect(validatePatterns(generatePatterns(seed, speed, 100), speed)).toBe(true);
     expect(generatePatterns(1, 11, 30)).toEqual(generatePatterns(1, 11, 30));
   });
@@ -26,6 +27,15 @@ describe('seeded generation', () => {
   });
 });
 describe('fixed-step runner', () => {
+  it('runs progressively faster at each difficulty while retaining reaction time', () => {
+    const distances = Object.keys(DIFFICULTIES).map((difficulty) => {
+      const game = new Simulation(difficulty as Difficulty);
+      run(game, 2);
+      expect(65 / game.speed).toBeGreaterThan(1.8 + 2 * 0.22);
+      return Math.round(game.distance);
+    });
+    expect(distances).toEqual([16, 22, 30, 38]);
+  });
   it('protects a resumed player from an obstacle paused immediately at the crossing', () => {
     const s = new Simulation('easy');
     s.setPaused(false);

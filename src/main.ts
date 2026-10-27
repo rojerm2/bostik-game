@@ -10,6 +10,7 @@ import { CameraSession, cameraError } from './tracking/camera';
 import { PosePipeline } from './tracking/pipeline';
 import { Calibrator, GestureRecognizer, TrackingGate, visible } from './tracking/gestures';
 import type { Actions, Mode, Observation, Settings } from './types';
+import { DIFFICULTIES } from './types';
 
 declare const __TEST_MODE__: boolean;
 type Screen = 'home' | 'setup' | 'testing' | 'countdown' | 'play' | 'paused' | 'over';
@@ -49,6 +50,7 @@ class BostikApp {
   private testReplay = false;
   private disposed = false;
   private resumeAfterCountdown = false;
+  private resumeOnCamera = false;
   constructor() {
     $('#app').innerHTML = shell();
     this.camera = new CameraSession($('#camera-video'), () =>
@@ -110,6 +112,7 @@ class BostikApp {
       }
     };
     $('#pause').onclick = () => this.pause('Take a little breather');
+    $('#camera-autoplay').onclick = () => this.setCameraAutoplay(!this.settings.cameraAutoplay);
     $('#stop-camera').onclick = () => this.setupCamera();
     document.querySelectorAll<HTMLButtonElement>('[data-difficulty]').forEach((button) => {
       button.onclick = () => {
@@ -127,6 +130,7 @@ class BostikApp {
       }
       if (action === 'start' || action === 'restart') this.countdown(false);
       if (action === 'resume') this.countdown(true);
+      if (action === 'stop-autoplay') this.setCameraAutoplay(false);
       if (action === 'home') this.home();
       if (action === 'setup') this.setupCamera();
       if (action === 'keyboard') this.keyboard();
@@ -192,6 +196,7 @@ class BostikApp {
     this.setupReady = false;
     this.hub.clear();
     this.testReplay = false;
+    this.resumeOnCamera = false;
   }
   private home() {
     this.stopTracking();
@@ -299,7 +304,8 @@ class BostikApp {
         this.hub.submit('camera', r.actions);
       else this.hub.clear();
       if (this.screen === 'testing' && r.valid) this.testActions(r.actions);
-      if (this.screen === 'play' && this.gate.paused) this.pause('Let’s find you again');
+      if (this.screen === 'play' && this.gate.paused)
+        this.pause('Let’s find you again', 'tracking');
       if (this.screen === 'paused') this.updateResume();
     }
     $('#tracking-status').textContent = this.trackingMessage;
@@ -363,11 +369,7 @@ class BostikApp {
     if (button) button.disabled = this.mode === 'camera' && this.checks.size < 4;
   }
   private countdown(resume: boolean) {
-    if (
-      this.mode === 'camera' &&
-      (!this.recognizer || (resume && !this.gate.ready) || (!resume && this.checks.size < 4))
-    )
-      return;
+    if (this.mode === 'camera' && (!this.recognizer || (!resume && this.checks.size < 4))) return;
     this.closeModal();
     this.audio.unlock();
     this.hub.clear();
@@ -375,13 +377,26 @@ class BostikApp {
     if (!resume) this.simulation = new Simulation(this.settings.difficulty, Date.now() >>> 0);
     this.simulation.setPaused(true);
     this.gate = new TrackingGate(this.settings.lossTimeout, performance.now());
-    this.countdownEnd = performance.now() + 3600;
+    this.countdownEnd = this.mode === 'camera' ? 0 : performance.now() + 3600;
     this.resumeAfterCountdown = resume;
     this.screen = 'countdown';
     this.update();
   }
-  private pause(reason: string) {
+  private pause(reason: string, cause: 'manual' | 'tracking' = 'manual') {
+    if (
+      this.mode === 'camera' &&
+      cause === 'manual' &&
+      ['play', 'countdown', 'paused'].includes(this.screen)
+    ) {
+      this.resumeOnCamera = false;
+      if (this.settings.cameraAutoplay) {
+        this.settings.cameraAutoplay = false;
+        this.persist();
+      }
+      this.updateAutoplay();
+    }
     if (!['play', 'countdown'].includes(this.screen)) return;
+    this.resumeOnCamera = cause === 'tracking';
     this.simulation.setPaused(true);
     this.hub.clear();
     this.recognizer?.reset();
@@ -395,14 +410,43 @@ class BostikApp {
   }
   private updateResume() {
     const button = document.querySelector<HTMLButtonElement>('[data-do="resume"]');
-    if (button)
-      button.disabled =
-        this.mode === 'camera' && (!this.gate.ready || (!this.camera.active && !this.testReplay));
+    if (button) button.disabled = this.mode === 'camera' && !this.camera.active && !this.testReplay;
     const status = document.querySelector('#resume-status');
     if (status && this.mode === 'camera')
-      status.textContent = this.gate.ready
-        ? 'Ready. Resume when you’re comfortable.'
-        : this.trackingMessage;
+      status.textContent =
+        this.settings.cameraAutoplay && this.resumeOnCamera
+          ? 'Return to the guide. Your adventure continues automatically after a countdown.'
+          : 'Autoplay is off. Choose Resume when visible, then return to your spot.';
+  }
+  private setCameraAutoplay(enabled: boolean) {
+    this.settings.cameraAutoplay = enabled;
+    this.persist();
+    this.hub.clear();
+    if (enabled && this.screen === 'paused') {
+      this.resumeOnCamera = true;
+      this.recognizer?.reset();
+      this.gate.update(false, performance.now());
+    }
+    if (!enabled) {
+      this.resumeOnCamera = false;
+      this.pause('Autoplay is off');
+    }
+    this.updateAutoplay();
+    this.updateResume();
+  }
+  private updateAutoplay() {
+    show('#camera-autoplay', this.mode === 'camera' && this.screen !== 'home');
+    const enabled = this.settings.cameraAutoplay;
+    const label = enabled ? 'Stop autoplay' : 'Enable autoplay';
+    $('#camera-autoplay').innerHTML = `${icon(enabled ? 'pause' : 'play')}<span>${label}</span>`;
+    $('#camera-autoplay').setAttribute('aria-label', label);
+    $('#camera-autoplay').title = label;
+    $('#camera-autoplay').setAttribute('aria-pressed', String(enabled));
+    const hint = document.querySelector('#autoplay-hint');
+    if (hint && this.mode === 'camera')
+      hint.textContent = enabled
+        ? 'Autoplay is on. Try all four moves, then stand tall in the middle. No Play click needed.'
+        : 'Autoplay is off. Choose Let’s explore, then return to the guide. The countdown will wait for you.';
   }
   private tick(dt: number) {
     if (this.disposed) return;
@@ -415,24 +459,50 @@ class BostikApp {
         $('#tracking-status').textContent = this.trackingMessage;
       }
     }
+    if (
+      this.mode === 'camera' &&
+      this.settings.cameraAutoplay &&
+      !document.hidden &&
+      document.hasFocus() &&
+      $('#modal').hidden === true &&
+      this.gate.ready
+    ) {
+      if (this.screen === 'testing' && this.checks.size === 4) this.countdown(false);
+      else if (this.screen === 'paused' && this.resumeOnCamera) this.countdown(true);
+    }
     if (this.screen === 'countdown') {
-      const remaining = Math.ceil((this.countdownEnd - now) / 1000);
+      if (this.mode === 'camera') {
+        if (!this.gate.ready) this.countdownEnd = 0;
+        else if (!this.countdownEnd) this.countdownEnd = now + 3000;
+      }
+      const waiting = !this.countdownEnd;
+      const remaining = waiting ? 0 : Math.ceil((this.countdownEnd - now) / 1000);
       const label = document.querySelector('#countdown-number');
-      if (label) label.textContent = remaining > 3 ? 'Ready?' : Math.max(1, remaining).toString();
-      if (now >= this.countdownEnd) {
-        if (this.mode === 'camera' && !this.gate.ready) this.pause('Let’s find you again');
-        else {
-          this.hub.clear();
-          this.gate.confirm();
-          if (this.resumeAfterCountdown) this.simulation.resumeSafely();
-          else this.simulation.setPaused(false);
-          this.screen = 'play';
-          this.update();
-        }
+      if (label) {
+        label.textContent = waiting
+          ? 'Find your spot'
+          : remaining > 3
+            ? 'Ready?'
+            : Math.max(1, remaining).toString();
+        label.classList.toggle('waiting', waiting);
+      }
+      const hint = document.querySelector('#countdown-hint');
+      if (hint && this.mode === 'camera')
+        hint.textContent = waiting
+          ? 'Take your time. Stand tall and still in the guide; the countdown will wait for you.'
+          : 'You’re ready. Stay in view — here we go!';
+      if (!waiting && now >= this.countdownEnd) {
+        this.hub.clear();
+        this.gate.confirm();
+        if (this.resumeAfterCountdown) this.simulation.resumeSafely();
+        else this.simulation.setPaused(false);
+        this.screen = 'play';
+        this.update();
       }
     }
     if (this.screen === 'play') {
-      if (this.mode === 'camera' && this.gate.tick(now)) this.pause('Let’s find you again');
+      if (this.mode === 'camera' && this.gate.tick(now))
+        this.pause('Let’s find you again', 'tracking');
       else {
         this.simulation.advance(dt, this.hub.read());
         for (const event of this.simulation.drainEvents()) {
@@ -479,10 +549,14 @@ class BostikApp {
     show('#touch-controls', this.mode === 'keyboard' && this.screen === 'play');
     show('#layer', !home && this.screen !== 'play');
     $('.game-stage').classList.toggle('setup-stage', ['setup', 'testing'].includes(this.screen));
+    $('.game-stage').classList.toggle(
+      'camera-dialog',
+      this.mode === 'camera' && ['countdown', 'paused', 'over'].includes(this.screen),
+    );
     $('.game-stage').classList.toggle('is-home', home);
     $('#mode-label').innerHTML = home
       ? `${icon('camera')} Made for movement <span>·</span> Ages 5+ with a grown-up`
-      : `${icon(this.mode === 'camera' ? 'camera' : 'keyboard')} ${this.mode === 'camera' ? 'Camera controls · mirrored' : 'Keyboard controls · arrows or WASD'} <span>·</span> ${this.settings.difficulty === 'practice' ? 'Practice trail' : 'Easy adventure'}`;
+      : `${icon(this.mode === 'camera' ? 'camera' : 'keyboard')} ${this.mode === 'camera' ? 'Camera controls · mirrored' : 'Keyboard controls · arrows or WASD'} <span>·</span> ${DIFFICULTIES[inGame ? this.simulation.difficulty : this.settings.difficulty].label}`;
     this.meadow.scene.show(
       this.screen === 'testing' ? this.playground : this.simulation,
       home || ['setup', 'testing'].includes(this.screen),
@@ -491,14 +565,15 @@ class BostikApp {
     this.updateSound();
     this.updateDifficulty();
     this.updateHUD();
+    this.updateAutoplay();
     if (this.screen === 'setup') this.renderSetup();
     if (this.screen === 'testing') this.renderTesting();
     if (this.screen === 'countdown')
       $('#layer').innerHTML =
-        `<div class="countdown-card"><span class="pill">YOUR ADVENTURE AWAITS</span><h2 id="countdown-number">Ready?</h2><p>${this.mode === 'camera' ? 'Stand in the middle. You’ve got this.' : 'Get your arrow keys ready.'}</p><button class="text-button" data-do="home">Back to meadow</button></div>`;
+        `<div class="countdown-card"><span class="pill">YOUR ADVENTURE AWAITS</span><h2 id="countdown-number" class="${this.mode === 'camera' ? 'waiting' : ''}">${this.mode === 'camera' ? 'Find your spot' : 'Ready?'}</h2><p id="countdown-hint">${this.mode === 'camera' ? 'Take your time. The countdown starts when you’re in view.' : 'Get your arrow keys ready.'}</p>${this.mode === 'camera' ? '<button class="text-button" data-do="stop-autoplay">Stop autoplay & pause</button>' : ''}<button class="text-button" data-do="home">Back to meadow</button></div>`;
     if (this.screen === 'paused') {
       $('#layer').innerHTML =
-        `<div class="dialog-card center-card"><span class="round-icon">${icon('pause')}</span><span class="eyebrow">A MOMENT TO REST</span><h2>${this.pauseReason}</h2><p id="resume-status">${this.mode === 'camera' ? this.trackingMessage : 'Pip will wait right here for you.'}</p><button class="primary-button" data-do="resume">${icon('play')} Continue adventure</button><button class="text-button" data-do="${this.mode === 'camera' ? 'setup' : 'home'}">${this.mode === 'camera' ? 'Set up camera again' : 'Back to meadow'}</button></div>`;
+        `<div class="dialog-card center-card"><span class="round-icon">${icon('pause')}</span><span class="eyebrow">A MOMENT TO REST</span><h2>${this.pauseReason}</h2><p id="resume-status">${this.mode === 'camera' ? this.trackingMessage : 'Pip will wait right here for you.'}</p><button class="primary-button" data-do="resume">${icon('play')} ${this.mode === 'camera' ? 'Resume when visible' : 'Continue adventure'}</button><button class="text-button" data-do="${this.mode === 'camera' ? 'setup' : 'home'}">${this.mode === 'camera' ? 'Set up camera again' : 'Back to meadow'}</button></div>`;
       this.updateResume();
     }
     if (this.screen === 'over')
@@ -516,7 +591,7 @@ class BostikApp {
   private renderSetup(message = '') {
     if (this.screen !== 'setup') return;
     $('#layer').innerHTML =
-      `<div class="dialog-card setup-card"><span class="step-count">01 <span>/ 03 · CAMERA & SPACE</span></span><h2>Hello, adventurer.</h2><p>Clear a little space. Ask a grown-up to secure the camera and stay nearby.</p><ol class="setup-tips"><li><span>1</span> Face the screen, with your whole body in view.</li><li><span>2</span> Stand in the middle, with room to move.</li><li><span>3</span> We’ll find your comfortable standing pose.</li></ol>${message ? '<p id="setup-message" class="notice" role="status"></p>' : ''}${this.setupReady ? `<label class="camera-select-label">Camera <select id="camera-select" aria-label="Camera selection"></select></label>${this.calibrator ? '<progress id="calibration-progress" max="1" value="0" aria-label="Calibration progress"></progress><p class="calibration-hint">Stand still while the bar fills.</p>' : '<button class="primary-button" data-do="calibrate">I’m standing in the middle ' + icon('arrow') + '</button>'}<button class="text-button" data-do="hands">Can’t show your feet? Use hands to hop</button>` : `<button class="primary-button" data-do="allow">${icon('camera')} Allow camera & continue</button>`}<button class="text-button" data-do="keyboard">Use keyboard instead</button><span class="privacy-line">${icon('shield')} No recording. No microphone. Always local.</span></div>`;
+      `<div class="dialog-card setup-card"><span class="step-count">01 <span>/ 03 · CAMERA & SPACE</span></span><h2>Hello, adventurer.</h2><p>Clear a little space. Ask a grown-up to secure the camera and stay nearby.</p><ol class="setup-tips"><li><span>1</span> Face the screen, with your whole body in view.</li><li><span>2</span> Stand in the middle, with room to move.</li><li><span>3</span> Press Start calibration, then return to the guide. We’ll wait for you.</li></ol>${message ? '<p id="setup-message" class="notice" role="status"></p>' : ''}${this.setupReady ? `<label class="camera-select-label">Camera <select id="camera-select" aria-label="Camera selection"></select></label>${this.calibrator ? '<progress id="calibration-progress" max="1" value="0" aria-label="Calibration progress"></progress><p class="calibration-hint">Stand still while the bar fills.</p>' : '<button class="primary-button" data-do="calibrate">Start calibration ' + icon('arrow') + '</button>'}<button class="text-button" data-do="hands">Can’t show your feet? Use hands to hop</button>` : `<button class="primary-button" data-do="allow">${icon('camera')} Allow camera & continue</button>`}<button class="text-button" data-do="keyboard">Use keyboard instead</button><span class="privacy-line">${icon('shield')} No recording. No microphone. Always local.</span></div>`;
     if (message) $('#setup-message').textContent = message;
     this.fillCameraSelect();
     $('#tracking-status').textContent = this.trackingMessage;
@@ -549,8 +624,9 @@ class BostikApp {
       ['duck', camera ? 'Crouch down' : '↓ or S · Crouch'],
     ];
     $('#layer').innerHTML =
-      `<div class="dialog-card setup-card"><span class="step-count">${camera ? '03 / 03' : '01 / 01'} <span>· TRY YOUR MOVES</span></span><h2>A little wiggle first.</h2><p>${camera ? 'Stand tall for a moment, then try each move. Pip follows you like a mirror.' : 'Hold a direction, then let go to come back to the middle. Small moves are all you need.'}</p><div class="move-checks">${moves.map(([key, text]) => `<div data-check="${key}"><span>${text}</span><i></i></div>`).join('')}</div><p class="small-copy">${camera ? 'Hold a crouch to stay low. Return to standing between hops.' : 'You can also use the large on-screen buttons during play.'}</p><button class="primary-button" data-do="start" ${camera ? 'disabled' : ''}>Let’s explore ${icon('arrow')}</button><button class="text-button" data-do="${camera ? 'setup' : 'home'}">${camera ? 'Recalibrate' : 'Back to meadow'}</button></div>`;
+      `<div class="dialog-card setup-card"><span class="step-count">${camera ? '03 / 03' : '01 / 01'} <span>· TRY YOUR MOVES</span></span><h2>A little wiggle first.</h2><p>${camera ? 'Stand tall for a moment, then try each move. Pip follows you like a mirror.' : 'Hold a direction, then let go to come back to the middle. Small moves are all you need.'}</p><div class="move-checks">${moves.map(([key, text]) => `<div data-check="${key}"><span>${text}</span><i></i></div>`).join('')}</div><p id="autoplay-hint" class="small-copy">${camera ? 'Hold a crouch to stay low. Return to standing between hops.' : 'You can also use the large on-screen buttons during play.'}</p><button class="primary-button" data-do="start" ${camera ? 'disabled' : ''}>Let’s explore ${icon('arrow')}</button><button class="text-button" data-do="${camera ? 'setup' : 'home'}">${camera ? 'Recalibrate' : 'Back to meadow'}</button></div>`;
     this.testActions(this.hub.peek());
+    this.updateAutoplay();
   }
   private updateHUD() {
     $('#stars').textContent = this.simulation.stars.toString();
@@ -560,8 +636,7 @@ class BostikApp {
     ).join('');
     $('#hearts').setAttribute('aria-label', `${this.simulation.hearts} hearts`);
     $('#best').textContent = this.saved.best.toString();
-    $('#lesson-label').textContent =
-      this.settings.difficulty === 'practice' ? 'PRACTICE TRAIL' : 'EASY ADVENTURE';
+    $('#lesson-label').textContent = DIFFICULTIES[this.simulation.difficulty].label.toUpperCase();
     $('#lesson-text').textContent = this.simulation.lesson;
   }
   private updateSound() {
@@ -598,16 +673,17 @@ class BostikApp {
     this.modalReturnFocus?.focus({ preventScroll: true });
   }
   private openSettings() {
+    this.pause('Take a little breather');
     const s = this.settings;
     const select = (name: string, options: [string, string][], value: string) =>
       `<select name="${name}">${options.map(([v, label]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
     this.modal(
-      `<span class="eyebrow">FOR THE GROWN-UPS</span><h2 id="modal-title">Parent corner</h2><p>Comfortable moves make happy adventures.</p><form id="settings-form"><label>Adventure${select(
+      `<span class="eyebrow">FOR THE GROWN-UPS</span><h2 id="modal-title">Parent corner</h2><p>Comfortable moves make happy adventures.</p><form id="settings-form"><label>Adventure · next run${select(
         'difficulty',
-        [
-          ['practice', 'Practice trail · one move at a time'],
-          ['easy', 'Easy adventure · all moves'],
-        ],
+        Object.entries(DIFFICULTIES).map(([value, preset]): [string, string] => [
+          value,
+          `${preset.label} · ${preset.description}`,
+        ]),
         s.difficulty,
       )}</label><label>Movement sensitivity <span class="field-note">Higher means smaller side steps.</span><input name="sensitivity" type="range" min="0.65" max="1.6" step="0.05" value="${s.sensitivity}"/></label><label>Hop gesture${select(
         'jumpGesture',
@@ -638,7 +714,7 @@ class BostikApp {
           ['1000', '1 second'],
         ],
         String(s.lossTimeout),
-      )}</label><label class="checkbox-label"><input type="checkbox" name="sound" ${s.sound ? 'checked' : ''}/> Gentle game sounds</label><button class="primary-button" type="submit">Save settings</button><button id="reset-calibration" class="text-button" type="button">Reset calibration & set up camera</button></form><details class="diagnostics"><summary>Tracking diagnostics</summary><p id="diagnostics"></p><p>Software processing time only. Physical motion-to-screen latency has not been measured.</p></details>`,
+      )}</label><label class="checkbox-label"><input type="checkbox" name="cameraAutoplay" ${s.cameraAutoplay ? 'checked' : ''}/> Camera autoplay · start and resume when visible</label><label class="checkbox-label"><input type="checkbox" name="sound" ${s.sound ? 'checked' : ''}/> Gentle game sounds</label><button class="primary-button" type="submit">Save settings</button><button id="reset-calibration" class="text-button" type="button">Reset calibration & set up camera</button></form><details class="diagnostics"><summary>Tracking diagnostics</summary><p id="diagnostics"></p><p>Software processing time only. Physical motion-to-screen latency has not been measured.</p></details>`,
     );
     const stats = this.pipeline?.stats;
     $('#diagnostics').textContent = stats
@@ -653,6 +729,7 @@ class BostikApp {
         Number(f.get('poseHz')) !== s.poseHz ||
         Number(f.get('lossTimeout')) !== s.lossTimeout;
       this.settings = {
+        cameraAutoplay: f.has('cameraAutoplay'),
         sensitivity: Number(f.get('sensitivity')),
         jumpGesture: f.get('jumpGesture') as Settings['jumpGesture'],
         difficulty: f.get('difficulty') as Settings['difficulty'],
@@ -663,6 +740,7 @@ class BostikApp {
       };
       this.persist();
       this.closeModal();
+      this.resumeOnCamera = this.mode === 'camera' && this.settings.cameraAutoplay;
       if (this.mode === 'camera' && changed && this.screen !== 'home') this.setupCamera();
       else this.update();
       this.toast('Settings saved. A new adventure uses your chosen trail.');
@@ -674,7 +752,7 @@ class BostikApp {
   }
   private openGuide() {
     this.modal(
-      `<span class="eyebrow">A HAPPY PLACE TO PLAY</span><h2 id="modal-title">A little help for grown-ups.</h2><div class="guide-content"><h3>Make room for small moves</h3><p>Clear the floor, secure the camera near the screen, and supervise the first setup. Keep the whole child in view. No need to run toward the camera or make big jumps.</p><h3>Find your comfortable middle</h3><p>Use a bright, evenly lit space. Stand still to calibrate, then try a small step each way, a little hop and a crouch. Child-left moves Pip screen-left. With feet out of view, explicitly choose “Raise both hands” in Parent corner.</p><h3>Pause whenever you like</h3><p>Use the pause button, P or Escape. Moving out of view pauses after a short delay. Return to a standing pose, choose Continue, and wait for the countdown. One adventurer at a time.</p><h3>Your video stays here</h3><p>Frames and body landmarks are processed on this device, never recorded or uploaded. No microphone, accounts or analytics. Only preferences and best score are saved. Return home or stop the camera to turn it off.</p><h3>Take it to the big screen</h3><p>HDMI from a laptop to a TV is recommended. Place the camera near the screen. Camera access needs HTTPS or localhost; an ordinary HTTP LAN address won’t work. Wireless casting latency is unverified.</p><h3>Offline adventures</h3><p>After “Ready for offline adventures” appears, the game, model and WASM are cached. Keep the page open until ready. Browser storage eviction can require another online visit. Close and reopen this tab to apply an available update.</p></div>`,
+      `<span class="eyebrow">A HAPPY PLACE TO PLAY</span><h2 id="modal-title">A little help for grown-ups.</h2><div class="guide-content"><h3>Make room for small moves</h3><p>Clear the floor, secure the camera near the screen, and supervise the first setup. Keep the whole child in view. No need to run toward the camera or make big jumps.</p><h3>Find your comfortable middle</h3><p>Use a bright, evenly lit space. Stand still to calibrate, then try a small step each way, a little hop and a crouch. Child-left moves Pip screen-left. With feet out of view, explicitly choose “Raise both hands” in Parent corner.</p><h3>Pause whenever you like</h3><p>Use the pause button, P or Escape. Moving out of view pauses after a short delay. With camera autoplay on, return to a standing pose to continue after a countdown. Stop autoplay or Pause keeps the game stopped. Enable autoplay to continue hands-free, or choose Resume when visible and walk back to your spot. One adventurer at a time.</p><h3>Your video stays here</h3><p>Frames and body landmarks are processed on this device, never recorded or uploaded. No microphone, accounts or analytics. Only preferences and best score are saved. Return home or stop the camera to turn it off.</p><h3>Take it to the big screen</h3><p>HDMI from a laptop to a TV is recommended. Place the camera near the screen. Camera access needs HTTPS or localhost; an ordinary HTTP LAN address won’t work. Wireless casting latency is unverified.</p><h3>Offline adventures</h3><p>After “Ready for offline adventures” appears, the game, model and WASM are cached. Keep the page open until ready. Browser storage eviction can require another online visit. Close and reopen this tab to apply an available update.</p></div>`,
     );
   }
   private async installOffline() {
@@ -748,6 +826,9 @@ class BostikApp {
         duck: this.simulation.duck,
         height: this.simulation.height,
         score: this.simulation.score,
+        speed: this.simulation.speed,
+        difficulty: this.simulation.difficulty,
+        distance: this.simulation.distance,
         hearts: this.simulation.hearts,
         checks: [...this.checks],
         stats: this.pipeline?.stats,

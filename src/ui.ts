@@ -1,3 +1,5 @@
+import { DIFFICULTIES } from './types';
+
 export const icons = {
   star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z"/>',
   camera:
@@ -28,6 +30,7 @@ export function shell() {
       <a class="brand" href="#" aria-label="Bostik Game home"><img src="${import.meta.env.BASE_URL}icon.svg" alt=""/><span>Bostik<span class="brand-game">GAME</span></span></a>
       <span class="brand-tagline">Little steps. Big adventures.</span>
       <nav class="header-actions" aria-label="Game options">
+        <button id="camera-autoplay" class="quiet-button autoplay-toggle" hidden aria-pressed="true" aria-label="Stop autoplay">${icon('pause')}<span>Stop autoplay</span></button>
         <button id="sound" class="icon-button" aria-label="Mute sound" title="Sound">${icon('sound')}</button>
         <button id="fullscreen" class="icon-button" aria-label="Enter fullscreen" title="Fullscreen">${icon('expand')}</button>
         <span class="divider"></span><button id="settings" class="quiet-button">${icon('settings')}<span>Parent corner</span></button>
@@ -42,7 +45,14 @@ export function shell() {
             <span class="pill">${icon('star')} MADE FOR LITTLE MOVERS</span>
             <h1>A little move.<br>A <em>big adventure.</em></h1>
             <p>Meet Pip. Your little fox, your big adventure.<br>Step, hop and crouch through a world of wonder.</p>
-            <div class="trail-options" role="group" aria-label="Difficulty"><button data-difficulty="practice" class="selected">${icon('leaf')} Practice trail</button><button data-difficulty="easy">${icon('star')} Easy adventure</button></div>
+            <div class="trail-options" role="group" aria-label="Difficulty">${Object.entries(
+              DIFFICULTIES,
+            )
+              .map(
+                ([value, preset]) =>
+                  `<button data-difficulty="${value}" title="${preset.description}" class="${value === 'practice' ? 'selected' : ''}">${icon(value === 'practice' ? 'leaf' : 'star')} ${preset.label}</button>`,
+              )
+              .join('')}</div>
             <button id="camera-start" class="primary-button">${icon('camera')} Let’s move ${icon('arrow')}</button>
             <button id="keyboard-start" class="text-button">${icon('keyboard')} Play with keyboard <span>→</span></button>
             <div class="hero-note"><span class="tiny-dot"></span> Your camera. Your moves. Always private.</div>
